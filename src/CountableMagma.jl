@@ -45,7 +45,7 @@ Base.size(G::Semimagma) = size(G.v)
 Base.getindex(G::Semimagma,i::Int) = G.v[i]
 
 order(G::Semimagma) = length(G)
-order(n,f=*,g=groupinverse(f)) = order(groupclosure(n,f,g))
+order(n,f=*,g=groupinverse(f)) = order(group(n,f,g))
 orders(G::Semimagma{T,X,Y} where T) where {X,Y} = order.(G,X,Y)
 Base.length(G::Semimagma) = length(G.v)
 Base.abs(G::Semimagma) = length(G)
@@ -97,7 +97,7 @@ for fun ∈ (:*,:+)
     end
 end
 
-export cayley, groupclosure, magmaclosure, groupclosure, issubgroup, isnormal, subgroup
+export cayley, group, magma, group, issubgroup, isnormal, subgroup
 export center, centralizer, normalizer, commutator, leftcosets, rightcosets, subsemigroup
 
 cayley(G::Semimagma) = [G(g,h) for g ∈ G.v, h ∈ G.v]
@@ -148,9 +148,22 @@ function isinvertible(G::Semimagma)
     return true
 end
 
-iscyclic(G::Semimagma{T,X,Y} where T) where {X,Y} = G == groupclosure(G[1],X,Y) || G == groupclosure(G[2],X,Y)
+iscyclic(G::Semimagma{T,X,Y} where T) where {X,Y} = G == group(G[1],X,Y) || G == group(G[2],X,Y)
 
-function magmaclosure(G::Semimagma{T,X,Y} where T,out=Semimagma(copy(G.v),X,Y)) where {X,Y}
+function magma(p,F::Function=*,G::Function=groupinverse(F))
+    out = Semimagma([p],F,G)
+    p ∉ out && push!(out.v,p)
+    pn = F(p,p)
+    while pn ∉ out
+        push!(out.v,pn)
+        pn = F(pn,p)
+    end
+    out
+end
+function magma(p::AbstractVector,F::Function=*,G::Function=groupinverse(F))
+    magma(Semimagma(p,F,G))
+end
+function magma(G::Semimagma{T,X,Y} where T,out=Semimagma(copy(G.v),X,Y)) where {X,Y}
     i = 1
     while i <= length(out)
         g = out[i]
@@ -164,26 +177,19 @@ function magmaclosure(G::Semimagma{T,X,Y} where T,out=Semimagma(copy(G.v),X,Y)) 
     end
     return out
 end
-function groupclosure(G::Semimagma{T,X,Y} where T,out::Semimagma=Semimagma(copy(G.v),X,Y)) where {X,Y}
+function group(G::Semimagma{T,X,Y} where T,out::Semimagma=Semimagma(copy(G.v),X,Y)) where {X,Y}
     F = groupinverse(G)
     for i ∈ 1:length(out)
         ig = F(out[i])
         ig ∉ out && push!(out.v,ig)
     end
-    return magmaclosure(G,out)
+    return magma(G,out)
 end
-function groupclosure(p::AbstractVector,F::Function=*,G::Function=groupinverse(F))
-    groupclosure(Semimagma(p,F,G))
+function group(p::AbstractVector,F::Function=*,G::Function=groupinverse(F))
+    group(Semimagma(p,F,G))
 end
-function groupclosure(p,F::Function=*,G::Function=groupinverse(F))
-    out = Semimagma([p],F,G)
-    p ∉ out && push!(out.v,p)
-    pn = F(p,p)
-    while pn ∉ out
-        push!(out.v,pn)
-        pn = F(pn,p)
-    end
-    out
+function group(p,F::Function=*,G::Function=groupinverse(F))
+    magma(p,F,G)
 end
 
 function subsemigroup(G::Semimagma{T,X,Y} where T,out=Semigroup(copy(G.v),X,Y)) where {X,Y}
@@ -302,7 +308,7 @@ function commutator(G::Semimagma{T,F,Q} where T,H::(Semimagma{S,F,Q} where S)=G)
             gh ∉ out && push!(out.v,gh)
         end
     end
-    return groupclosure(G,out)
+    return group(G,out)
 end
 
 Base.:/(G::Semimagma,N::Semimagma) = leftcosets(N,G)
