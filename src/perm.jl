@@ -48,8 +48,7 @@ Permutation{N}(I::LinearAlgebra.UniformScaling{Bool}) where N = Permutation(coun
 Base.one(a::Permutation{N}) where N = Permutation{N}(I)
 Base.inv(a::Permutation) = Permutation(sortperm(a.v))
 Base.inv(a::Permutation{N,<:Values} where N) = Permutation(Values(sortperm(a.v)))
-commutator(g::Permutation,h::Permutation) = commutator(CyclicGroup(g),CyclicGroup(h))
-
+commutator(g::Permutation,h::Permutation) = commutator(groupclosure(g),groupclosure(h))
 
 struct Cycle{N,T<:AbstractVector{Int}} <: AbstractPermutation{N}
     v::T
@@ -68,8 +67,6 @@ end
 
 Base.size(c::Cycle) = size(c.v)
 Base.getindex(c::Cycle,i::Int) = c.v[i]
-
-
 
 struct CycleProduct{N,T<:Tuple} <: AbstractPermutation{N}
     v::T
@@ -133,7 +130,7 @@ AlternatingGroup(Sn::Semimagma) = Semimagma(Sn.v[findall(iseven.(Sn.v))])
 DihedralGroup(r::Permutation,s::Permutation) = DihedralGroup(decompose(r),decompose(s))
 function DihedralGroup(r::Cycle,s::Cycle)
     order(s)≠1 && throw(error("order($s)≠1"))
-    CyclicGroup(Permutation(s))*CyclicGroup(Permutation(r))
+    groupclosure(Permutation(s))*groupclosure(Permutation(r))
 end
 
 #=

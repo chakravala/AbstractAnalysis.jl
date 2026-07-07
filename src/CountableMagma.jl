@@ -28,20 +28,25 @@ module CountableMagma
 
 using LinearAlgebra, StaticVectors, Combinatorics
 
-export Semimagma, grouplaw, groupinverse, compose
+export Semimagma, grouplaw, groupinverse, compose, order, orders
 
 struct Semimagma{T,F,G} <: DenseVector{T}
     v::Vector{T}
-    Semimagma(v::Vector{T},f=*,g=inv) where T = new{T,f,g}(v)
+    Semimagma(v::Vector{T},f=*,g=groupinverse(f)) where T = new{T,f,g}(v)
 end
 
 Base.@pure grouplaw(::Semimagma{T,F} where T) where F = F
 Base.@pure groupinverse(::Semimagma{T,F,G} where {T,F}) where G = G
+Base.@pure groupinverse(::typeof(*)) = inv
+Base.@pure groupinverse(::typeof(+)) = -
 (::Semimagma{T,F} where T)(a,b) where F = F(a,b)
 
 Base.size(G::Semimagma) = size(G.v)
 Base.getindex(G::Semimagma,i::Int) = G.v[i]
 
+order(G::Semimagma) = length(G)
+order(n,f=*,g=groupinverse(f)) = order(groupclosure(n,f,g))
+orders(G::Semimagma{T,X,Y} where T) where {X,Y} = order.(G,X,Y)
 Base.length(G::Semimagma) = length(G.v)
 Base.abs(G::Semimagma) = length(G)
 
@@ -92,7 +97,7 @@ for fun ∈ (:*,:+)
     end
 end
 
-export cayley, CyclicGroup, magmaclosure, groupclosure, issubgroup, isnormal, subgroup
+export cayley, groupclosure, magmaclosure, groupclosure, issubgroup, isnormal, subgroup
 export center, centralizer, normalizer, commutator, leftcosets, rightcosets, subsemigroup
 
 cayley(G::Semimagma) = [G(g,h) for g ∈ G.v, h ∈ G.v]
@@ -143,18 +148,7 @@ function isinvertible(G::Semimagma)
     return true
 end
 
-iscyclic(G::Semimagma) = G == CyclicGroup(G[1]) || G == CyclicGroup(G[2])
-
-function CyclicGroup(p,F=*,G=inv)
-    out = Semimagma([p],F,G)
-    p ∉ out && push!(out.v,p)
-    pn = F(p,p)
-    while pn ∉ out
-        push!(out.v,pn)
-        pn = F(pn,p)
-    end
-    out
-end
+iscyclic(G::Semimagma{T,X,Y} where T) where {X,Y} = G == groupclosure(G[1],X,Y) || G == groupclosure(G[2],X,Y)
 
 function magmaclosure(G::Semimagma{T,X,Y} where T,out=Semimagma(copy(G.v),X,Y)) where {X,Y}
     i = 1
@@ -170,13 +164,26 @@ function magmaclosure(G::Semimagma{T,X,Y} where T,out=Semimagma(copy(G.v),X,Y)) 
     end
     return out
 end
-function groupclosure(G::Semimagma{T,X,Y} where T,out=Semimagma(copy(G.v),X,Y)) where {X,Y}
+function groupclosure(G::Semimagma{T,X,Y} where T,out::Semimagma=Semimagma(copy(G.v),X,Y)) where {X,Y}
     F = groupinverse(G)
     for i ∈ 1:length(out)
         ig = F(out[i])
         ig ∉ out && push!(out.v,ig)
     end
     return magmaclosure(G,out)
+end
+function groupclosure(p::AbstractVector,F::Function=*,G::Function=groupinverse(F))
+    groupclosure(Semimagma(p,F,G))
+end
+function groupclosure(p,F::Function=*,G::Function=groupinverse(F))
+    out = Semimagma([p],F,G)
+    p ∉ out && push!(out.v,p)
+    pn = F(p,p)
+    while pn ∉ out
+        push!(out.v,pn)
+        pn = F(pn,p)
+    end
+    out
 end
 
 function subsemigroup(G::Semimagma{T,X,Y} where T,out=Semigroup(copy(G.v),X,Y)) where {X,Y}

@@ -169,6 +169,6 @@ const GaussianNaturals = map(complextuple,ElegantPairs1)
 const GaussianIntegers = map(complextuple,elegantpair(Integers,Integers))
 const GaussianRationals = map(complextuple,elegantpair(Rationals,Rationals))
 
-Semimagma(v::CountableVector,f=*,g=inv) = Semimagma(collect(v),f,g)
+Semimagma(v::CountableVector,f=*,g=groupinverse(f)) = Semimagma(collect(v),f,g)
 
 
