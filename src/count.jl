@@ -28,20 +28,31 @@ CountableVector{T}(f,n::Int=100) where T = CountableVector{T,f}((n,))
 CountableMatrix{T}(f,n::NTuple) where T = CountableMatrix{T,f}(n)
 CountableMatrix{T}(f,n::Int=100,m::Int=100) where T = CountableMatrix{T,f}((n,))
 CountableVector(f,n=100) = CountableVector{typeof(f(1))}(f,n)
-CountableMatrix(f,n=100,m=100) = CountableVector{typeof(f(1))}(f,(n,m))
+CountableVector(n::Int=100) = Naturals(n)
+CountableVector(n::Tuple{Int}) = Naturals(n[1])
+CountableMatrix(f,n::Int=100,m::Int=100) = CountableMatrix{typeof(f(1,1))}(f,(n,m))
+CountableMatrix(f,n::Tuple{Int,Int}) = CountableMatrix{typeof(f(1,1))}(f,n)
+CountableMatrix(n::Int=100,m::Int=100) = CountableArray(n,m)
+CountableMatrix(n::Tuple{Int,Int}) = CountableArray(n)
 CountableArray(f,n::Vararg{Int,N}) where N = CountableArray{typeof(f(one.(n)...)),N}(f,n)
 CountableArray(f,n::NTuple{N,Int}) where N = CountableArray{typeof(f(one.(n)...)),N}(f,n)
+CountableArray(n::Vararg{Int,N}) where N = countabletuple(Naturals.(n)...)
+CountableArray(n::NTuple{N,Int}) where N = countabletuple(Naturals.(n)...)
 
 (::CountableArray{T,N,F})(n::Vararg{Int,N}) where {T,N,F} = CountableArray{T,N,F}(n)
 (::CountableArray{T,N,F})(n::NTuple{N,Int}) where {T,N,F} = CountableArray{T,N,F}(n)
 
 Base.@pure counter(::CountableArray{T,N,F} where {T,N}) where F = F
 Base.getindex(::CountableVector{T,F} where T,i::Int) where F = F(i)
-Base.getindex(::CountableArray{T,N,F} where T,i::Vararg{Int,N}) where {N,F} = F(i...)
+Base.getindex(::CountableVector{T,F} where T,i::Int,j::Int) where F = isone(j) ? F(i) : F(i,j)
+Base.getindex(::CountableArray{T,N,F} where T,i::Vararg{Int}) where {N,F} = F(i...)
 Base.size(x::CountableArray) = x.n
 Base.resize!(x::CountableVector,i::Int) = (x.n = i; return x)
 
+Semimagma(v::CountableVector,f=*,g=groupinverse(f)) = Semimagma(collect(v),f,g)
+
 Base.map(f,x::CountableArray{T,N,F} where {T,N}) where F = CountableArray(f∘F,x.n)
+mapmap(f,x::CountableArray{<:CountableArray,N,F} where N) where F = CountableArray((u...)->map(f,F(u...)),x.n)
 Base.broadcast(f,x::CountableArray) = map(f,x)
 
 for fun ∈ (:*,:+,:/,:-,:^)
@@ -53,7 +64,7 @@ for fun ∈ (:*,:+,:/,:-,:^)
     end
 end
 
-export elegantpair, elegantproduct, countablepair, countableproduct
+export elegantpair, elegantproduct, countabletuple, countableproduct, mapmap
 
 function cantorinversion(n::Int)
     w = Int(floor((sqrt(8n+1)-1)/2))
@@ -91,14 +102,16 @@ function elegantproduct(a::CountableVector{T,F} where T,b::CountableVector{S,G} 
     CountableVector(myprod)
 end
 
-countablepair(x::CountableVector,y::CountableVector) = countableproduct(x,y,tuple)
-function countableproduct(x::CountableVector{T,F} where T,y::CountableVector{S,G} where S,op=*) where {F,G}
+countabletuple(x::CountableVector) = x
+countabletuple(x::CountableVector,y::CountableVector) = countableproduct(x,y,tuple)
+countabletuple(x::CountableVector,y::CountableVector,z::CountableVector) = countableproduct(x,y,z,tuple)
+countableproduct(x::CountableVector) = x
+function countableproduct(x::CountableVector{T,F} where T,y::CountableVector{S,G} where S,op::Function=*) where {F,G}
     CountableArray((i,j) -> op(F(i),G(j)),(length(x),length(y)))
 end
-function countableproduct(x::CountableVector{T,F} where T,y::CountableVector{S,G} where S,z::CountableVector{R,H} where R,op=*) where {F,G,H}
+function countableproduct(x::CountableVector{T,F} where T,y::CountableVector{S,G} where S,z::CountableVector{R,H} where R,op::Function=*) where {F,G,H}
     CountableArray((i,j,k) -> op(F(i),G(j),H(k)),(length(x),length(y),length(z)))
 end
-
 
 struct CountableCache{T,F} <: DenseVector{T}
     v::Vector{T}
@@ -145,9 +158,12 @@ end
 const SternBrocot = CountableCache([1],sternbrocot)
 export SternBrocot, sternbrocot
 
+integer(n) = iseven(n) ? n÷2 : -(n÷2)
+positiverational(n) = Rational(sternbrocot(n),sternbrocot(n+1))
+nonzerorational(n) = rational(n+1)
 function rational(z::Int)
-    n = Integers[z]
-    iszero(n) ? Rational(0,1) : (n>0 ? (+) : (-))(PositiveRationals[abs(n)])
+    n = integer(z)
+    iszero(n) ? Rational(0,1) : (n>0 ? (+) : (-))(positiverational(abs(n)))
 end
 
 complextuple(n) = Complex(n...)
@@ -157,18 +173,23 @@ export PositiveRationals, Rationals, NonzeroRationals
 export GaussianNaturals, GaussianIntegers, GaussianRationals
 
 const Naturals = CountableVector(identity)
-const Integers = CountableVector(n -> iseven(n) ? n÷2 : -(n÷2))
+const Integers = CountableVector(integer)
 const CantorPairs = CountableVector(cantorinversion)
 const ElegantPairs0 = CountableVector(elegantinversion)
 const ElegantPairs1 = CountableVector(elegantinversion1)
 const ElegantPairs = ElegantPairs1
-const PositiveRationals = CountableVector(n -> Rational(sternbrocot(n),sternbrocot(n+1)))
+const PositiveRationals = CountableVector(positiverational)
 const Rationals = CountableVector(rational)
-const NonzeroRationals = CountableVector(n -> rational(n+1))
+const NonzeroRationals = CountableVector(nonzerorational)
 const GaussianNaturals = map(complextuple,ElegantPairs1)
 const GaussianIntegers = map(complextuple,elegantpair(Integers,Integers))
 const GaussianRationals = map(complextuple,elegantpair(Rationals,Rationals))
 
-Semimagma(v::CountableVector,f=*,g=groupinverse(f)) = Semimagma(collect(v),f,g)
+export SequenceArray
+
+sequence(i::NTuple{N,Int},j) where N = j ∈ Base.OneTo(N) ? i[j] : 1
+sequence(i::Vararg{Int}) = CountableVector(Base.Fix{1}(sequence,i))
+SequenceArray(n::Vararg{Int}) = CountableArray(sequence,n)
+SequenceArray(fun::Function,n::Vararg{Int}) = mapmap(fun,CountableArray(sequence,n))
 
 
