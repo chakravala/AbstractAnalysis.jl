@@ -113,28 +113,115 @@ function countableproduct(x::CountableVector{T,F} where T,y::CountableVector{S,G
     CountableArray((i,j,k) -> op(F(i),G(j),H(k)),(length(x),length(y),length(z)))
 end
 
-struct CountableCache{T,F} <: DenseVector{T}
-    v::Vector{T}
+using ElasticArrays
+
+struct CountableCache{T,N,V<:AbstractArray{T,N},F} <: DenseArray{T,N}
+    v::V
 end
 
-CountableCache{T}(v::Vector{T},f) where T = CountableCache{T,f}(v)
-CountableCache(v::Vector{T},f) where T = CountableCache{T}(v,f)
-(c::CountableCache)(n::Int) = c[n]
+CountableCache{T}(v::V,f) where {T,N,V<:AbstractArray{T,N}} = CountableCache{T,N,V,f}(v)
+CountableCache(v::AbstractArray{T},f) where T = CountableCache{T}(v,f)
+(c::CountableCache{T,N} where T)(n::Vararg{Int,N}) where N = c[n...]
 
 Base.size(c::CountableCache) = size(c.v)
-function Base.getindex(c::CountableCache{T,F} where T,n::Int) where F
+function Base.getindex(c::CountableCache{T,1,V,F} where {T,V},n::Int) where F
     N = length(c)
-    n ≤ N && (return c.v[n])
+    n ≤ N && (return extract(c.v,n))
     resize!(c.v,n)
     for k ∈ N+1:n
-        @inbounds  c.v[k] = F(c.v,k)
+        assign!(c.v,k,F(c.v,k))
     end
-    return c.v[end]
+    return extract(c.v,n)
 end
 
 function Base.cumsum(x::CountableVector{T,F} where T) where F
-    out = cumsum(view(x,:))
-    CountableCache(out,(x,k) -> x[k-1] + F(k))
+    CountableCache(cumsum(view(x,:)),(x,k) -> x[k-1] + F(k))
+end
+
+#ElasticArrays.resize_lastdim!(c::CountableCache,i) = ElasticArrays.resize_lastdim!(c.v,i)
+
+extract(x::AbstractVector,i) = (@inbounds x[i])
+extract(x::AbstractMatrix,i) = (@inbounds x[:,i])
+extract(x::AbstractArray{T,3} where T,i) = (@inbounds x[:,:,i])
+extract(x::AbstractArray{T,4} where T,i) = (@inbounds x[:,:,:,i])
+extract(x::AbstractArray{T,5} where T,i) = (@inbounds x[:,:,:,:,i])
+
+assign!(x::AbstractVector,i,s) = (@inbounds x[i] = s)
+assign!(x::AbstractMatrix,i,s) = (@inbounds x[:,i] = s)
+assign!(x::AbstractArray{T,3} where T,i,s) = (@inbounds x[:,:,i] = s) # .= s
+assign!(x::AbstractArray{T,4} where T,i,s) = (@inbounds x[:,:,:,i] = s)
+assign!(x::AbstractArray{T,5} where T,i,s) = (@inbounds x[:,:,:,:,i] = s)
+
+export FixedPoint, fixedpoint, fixedpointhold, fixedpointerror, errornorm
+
+struct FixedPoint{T,F}
+    v0::T
+    v::T
+    n::Int
+    FixedPoint(v0::T,v::T,n::Int,F) where T = new{T,F}(v0,v,n)
+end
+
+function Base.show(io::IO,x::FixedPoint)
+    println(io,"(f^$(x.n))($(x.v0)) = $(x.v)")
+    #show(io,x.v)
+end
+
+function Base.sum(x::CountableVector{T,F} where T) where F
+    countsum(u) = (first(u)+1) => (last(u)+F(first(u)+1))
+    FixedPoint(1=>x[1],length(x)=>sum(view(x,:)),length(x),countsum)
+end
+
+function Base.getindex(x::FixedPoint{T,F} where T,i::Int) where F
+    i == x.n && (return x)
+    xn = i<x.n ? x.v0 : x.v
+    for k ∈ (i<x.n ? (2:i) : (x.n+1:i))
+        xn = F(xn)
+    end
+    return FixedPoint(x.v0,xn,i,F)
+end
+
+errornorm(a::Number,b::Number,ϵ=5eps()) = norm(a-b)
+fixedpointerror(f,x,ϵ=5eps()) = fixedpoint(f,x,ϵ,Val(true))
+fixedpoint(f,x,n::Int,v::Val=Val(false)) = fixedpoint(f,x,1:n,v)
+function fixedpoint(f,x,n::AbstractVector{Int},::Val{print}=Val(false)) where print
+    out = print ? zeros(length(n)) : nothing
+    xn = x
+    for i ∈ n
+        if print
+            xi = f(xn)
+            out[i] = errornorm(xi,xn)
+            xn = xi
+        else
+            xn = f(xn)
+        end
+    end
+    return print ? (xn,out) : xn
+end
+function fixedpoint(f,x,ϵ::AbstractFloat=5eps(),::Val{print}=Val(false)) where print
+    change = 5ϵ
+    print && (out = Float64[])
+    while change > ϵ
+        xi = f(x)
+        change = errornorm(xi,x)
+        print && push!(out,change)
+        x = xi
+    end
+    return print ? (x,out) : x
+end
+
+function fixedpointhold(f,x,n::AbstractVector{Int},::Val{print}=Val(false)) where print
+    print && (out = zeros(length(n)))
+    xi = x
+    for i ∈ n
+        if print
+            y = f(x,xi) #  hold x constant, iterate xi
+            out[i] = errornorm(y,xi)
+            xi = y
+        else
+            xi = f(x,xi) # hold x constant, iterate xi
+        end
+    end
+    return xi
 end
 
 function sternbrocot(n::Int)
