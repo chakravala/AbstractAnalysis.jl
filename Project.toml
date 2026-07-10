@@ -11,9 +11,11 @@ Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
 
 [weakdeps]
 Mods = "7475f97c-0381-53b1-977b-4c60186c8d62"
+Primes = "27ebfcd6-29c5-5fa9-bf4b-fb8fc14df3ae"
 
 [extensions]
 ModsExt = "Mods"
+PrimesExt = "Primes"
 
 [compat]
 julia = "1"
