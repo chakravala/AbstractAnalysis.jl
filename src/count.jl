@@ -172,7 +172,7 @@ Base.last(x::FixedPoint{<:Pair{Int}}) = last(final(x))
 Base.lastindex(x::FixedPoint) = length(x)
 Base.length(x::FixedPoint) = x.n
 residual(x::FixedPoint) = x.r
-(::FixedPoint{T,F} where T)(u) where F = F(u)
+(x::FixedPoint{T,F,D} where T)(u) where {F,D} = FixedPoint(u,length(x)-1,F,D)
 (::FixedPoint{T,F,D} where {T,F})(x,y) where D = D(x,y)
 
 function Base.show(io::IO,x::FixedPoint)
@@ -190,6 +190,16 @@ function Base.prod(x::CountableVector{T,F} where T) where F
     countprod(u) = (first(u)+1) => (last(u)*F(first(u)+1))
     val = prod(view(x,:))
     FixedPoint(1=>x[1],length(x)=>val,length(x),distance2(val/x[end],val),countprod)
+end
+
+function FixedPoint(v0,n::Int,F,D=distance2)
+    x0 = v0
+    xn = x0
+    for k ∈ 2:n+1
+        x0 = xn
+        xn = F(xn)
+    end
+    return FixedPoint(v0,xn,n+1,D(x0,xn),F,D)
 end
 
 function Base.getindex(x::FixedPoint{T,F,D} where T,i::Int) where {F,D}
@@ -227,7 +237,7 @@ function fixedpoint(f,x,n::AbstractVector{Int},::Val{print}=Val(false),d=distanc
         xn = f(xn)
         print && (out[i] = d(x0,xn))
     end
-    fp = FixedPoint(x,xn,n[end],d(x0,xn),f,d)
+    fp = FixedPoint(x,xn,length(n)+1,d(x0,xn),f,d)
     return print ? (fp,out) : fp
 end
 function fixedpoint(f,x,ϵ::AbstractFloat=5eps(),::Val{print}=Val(false),d=distance2) where print
@@ -235,7 +245,7 @@ function fixedpoint(f,x,ϵ::AbstractFloat=5eps(),::Val{print}=Val(false),d=dista
     print && (out = Float64[])
     x0 = x
     xn = x
-    n = 0
+    n = 1
     while change > ϵ
         n += 1
         x0 = xn
@@ -255,7 +265,7 @@ function fixedpointhold(f,x,n::AbstractVector{Int},::Val{print}=Val(false),d=dis
         xn = f(x,xn) # hold x constant, iterate xn
         print && (out[i] = d(x0,xn))
     end
-    return FixedPoint(x,xn,n[end],d(x0,xn),f,d)
+    return FixedPoint(x,xn,length(n)+1,d(x0,xn),f,d)
 end
 
 residuals(x::FixedPoint,d=distance2) = residuals(collect(x),d)
@@ -276,6 +286,18 @@ end
 function residuals(x::CountableCache,d=distance2)
     CountableCache(residuals(x.v),(u,k) -> d(extract(u,k-1),extract(u,k)))
 end
+
+export FixedCycle
+
+struct FixedCycle{F,D}
+    n::Int
+    FixedCycle(n::Int,f,d=distance2) = new{f,d}(n)
+    FixedCycle(f,d=distance2) = new{f,d}(100)
+end
+
+Base.length(x::FixedCycle) = x.n
+
+(x::FixedCycle{F,D})(u,n=length(x)) where {F,D} = FixedPoint(u,n,F,D)
 
 export elegantpair, elegantproduct, countabletuple, countableproduct, mapmap
 
