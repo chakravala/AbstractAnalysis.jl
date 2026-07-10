@@ -14,7 +14,9 @@
 
 export CountableArray, CountableVector, CountableMatrix, CountableCache
 
-mutable struct CountableArray{T,N,F} <: AbstractArray{T,N}
+abstract type AbstractCountable{T,N,F} <: AbstractArray{T,N} end
+
+mutable struct CountableArray{T,N,F} <: AbstractCountable{T,N,F}
     n::NTuple{N,Int}
 end
 
@@ -82,7 +84,7 @@ using ElasticArrays
 import ElasticArrays: resize_lastdim!
 export resize_lastdim!, extract, assign!
 
-struct CountableCache{T,N,V<:AbstractArray{T,N},F} <: DenseArray{T,N}
+struct CountableCache{T,N,V<:AbstractArray{T,N},F} <: AbstractCountable{T,N,F}
     v::V
 end
 
@@ -125,6 +127,12 @@ end
 function Base.cumprod(x::CountableVector{T,F} where T) where F
     CountableCache(cumprod(view(x,:)),(x,k) -> x[k-1] * F(k))
 end
+function Base.cumsum(x::CountableCache{T,1,V,F} where {T,V}) where F
+    CountableCache(cumsum(x.v),(x,k) -> x[k-1] + F(x,k))
+end
+function Base.cumprod(x::CountableCache{T,1,V,F} where {T,V}) where F
+    CountableCache(cumprod(x.v),(x,k) -> x[k-1] * F(x,k))
+end
 
 extract(x::AbstractVector,i) = (@inbounds x[i])
 extract(x::AbstractMatrix,i) = (@inbounds x[:,i])
@@ -141,12 +149,14 @@ assign!(x::AbstractArray{T,5} where T,i,s) = (@inbounds x[:,:,:,:,i] = s)
 export distance, distance2, distancemax
 
 distance2(a,b) = Inf
-distance2(a::Pair{Int},b::Pair{Int}) = distance(last(a),last(b))
+distance2(a::Pair{Int},b::Pair{Int}) = distance2(last(a),last(b))
+distance2(a::Pair{<:Pair},b::Pair{<:Pair}) = distance2(last(a),last(b))
 distance2(a::AbstractArray,b::AbstractArray) = norm(a-b)
 distance2(a::Number,b::Number,ϵ=5eps()) = norm(a-b)
 
 distance(a,b) = Inf
 distance(a::Pair{Int},b::Pair{Int}) = distance(last(a),last(b))
+distance(a::Pair{<:Pair},b::Pair{<:Pair}) = distance(last(a),last(b))
 distance(a::AbstractArray,b::AbstractArray) = norm(a-b)
 distance(a::Number,b::Number,ϵ=5eps()) = abs(a-b)
 
@@ -166,9 +176,9 @@ end
 initial(x::FixedPoint) = x.v0
 final(x::FixedPoint) = x.v
 Base.first(x::FixedPoint) = initial(x)
-Base.first(x::FixedPoint{<:Pair{Int}}) = last(initial(x))
+Base.first(x::FixedPoint{<:Pair{<:Union{Int,Pair}}}) = last(initial(x))
 Base.last(x::FixedPoint) = final(x)
-Base.last(x::FixedPoint{<:Pair{Int}}) = last(final(x))
+Base.last(x::FixedPoint{<:Pair{<:Union{Int,Pair}}}) = last(final(x))
 Base.lastindex(x::FixedPoint) = length(x)
 Base.length(x::FixedPoint) = x.n
 residual(x::FixedPoint) = x.r
@@ -190,6 +200,48 @@ function Base.prod(x::CountableVector{T,F} where T) where F
     countprod(u) = (first(u)+1) => (last(u)*F(first(u)+1))
     val = prod(view(x,:))
     FixedPoint(1=>x[1],length(x)=>val,length(x),distance2(val/x[end],val),countprod)
+end
+
+function Base.sum(x::FixedPoint{<:Pair{<:Union{Int,Pair}},F}) where F
+    function countsum(u)
+        fp1 = F(first(u))
+        fp1 => (last(u) + last(fp1))
+    end
+    FixedPoint(x.v0=>last(x.v0),length(x)-1,countsum)
+end
+function Base.sum(x::FixedPoint{T,F} where T) where F
+    function countsum(u)
+        fp1 = F(last(first(u)))
+        ((first(first(u))+1)=>fp1) => (last(u) + fp1)
+    end
+    FixedPoint((1=>first(x))=>first(x),length(x)-1,countsum)
+end
+function Base.prod(x::FixedPoint{<:Pair{<:Union{Int,Pair}},F}) where F
+    function countprod(u)
+        fp1 = F(first(u))
+        fp1 => (last(u) + last(fp1))
+    end
+    FixedPoint(x.v0=>last(x.v0),length(x)-1,countprod)
+end
+function Base.prod(x::FixedPoint{T,F} where T) where F
+    function countprod(u)
+        fp1 = F(last(first(u)))
+        ((first(first(u))+1)=>fp1) => (last(u) * fp1)
+    end
+    FixedPoint((1=>first(x))=>first(x),length(x)-1,countprod)
+end
+
+function Base.cumsum(x::FixedPoint{<:Pair{Int},F,D}) where {F,D}
+    CountableCache([first(x)],(u,k) -> u[k-1] + last(FixedPoint(x.v0,k-1,F,D)))
+end
+function Base.cumsum(x::FixedPoint{T,F,D} where T) where {F,D}
+    CountableCache([x],(u,k) -> u[k-1] + last(FixedPoint(x.v0,k-1,F,D)))
+end
+function Base.cumprod(x::FixedPoint{<:Pair{Int},F,D}) where {F,D}
+    CountableCache([first(x)],(u,k) -> u[k-1] * last(FixedPoint(x.v0,k-1,F,D)))
+end
+function Base.cumprod(x::FixedPoint{T,F,D} where T) where {F,D}
+    CountableCache([x],(u,k) -> u[k-1] * last(FixedPoint(x.v0,k-1,F,D)))
 end
 
 function FixedPoint(v0,n::Int,F,D=distance2)
