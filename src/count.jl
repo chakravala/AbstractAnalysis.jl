@@ -47,7 +47,7 @@ Base.getindex(::CountableVector{T,F} where T,i::Int) where F = F(i)
 Base.getindex(::CountableVector{T,F} where T,i::Int,j::Int) where F = isone(j) ? F(i) : F(i,j)
 Base.getindex(::CountableArray{T,N,F} where T,i::Vararg{Int}) where {N,F} = F(i...)
 Base.size(x::CountableArray) = x.n
-Base.resize!(x::CountableVector,i::Int) = (x.n = i; return x)
+Base.resize!(x::CountableVector,i::Int) = (x.n = (i,); return x)
 
 Semimagma(v::CountableVector,f=*,g=groupinverse(f)) = Semimagma(collect(v),f,g)
 
@@ -152,7 +152,7 @@ distance(a::Number,b::Number,ϵ=5eps()) = abs(a-b)
 
 distancemax(a,b) = Inf
 
-export FixedPoint, fixedpoint, fixedpointhold, fixedpointerror, residual
+export FixedPoint, fixedpoint, fixedpointhold, fixedpointerror, residual, residuals
 
 struct FixedPoint{T,F,D}
     v0::T
@@ -256,6 +256,25 @@ function fixedpointhold(f,x,n::AbstractVector{Int},::Val{print}=Val(false),d=dis
         print && (out[i] = d(x0,xn))
     end
     return FixedPoint(x,xn,n[end],d(x0,xn),f,d)
+end
+
+residuals(x::FixedPoint,d=distance2) = residuals(collect(x),d)
+function residuals(x::AbstractArray,d=distance2)
+    x0 = extract(x,1)
+    xi = x0
+    out = Vector{Float64}(undef,size(x)[end])
+    for i ∈ 1:size(x)[end]
+        x0 = xi
+        xi = extract(x,i)
+        out[i] = d(x0,xi)
+    end
+    return out
+end
+function residuals(x::CountableVector{T,F} where T,d=distance2) where F
+    CountableVector(k -> d(F(isone(k) ? 1 : k-1),F(k)),length(x))
+end
+function residuals(x::CountableCache,d=distance2)
+    CountableCache(residuals(x.v),(u,k) -> d(extract(u,k-1),extract(u,k)))
 end
 
 export elegantpair, elegantproduct, countabletuple, countableproduct, mapmap

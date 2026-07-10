@@ -1,6 +1,6 @@
 name = "CountableMagma"
 uuid = "ac3229fe-d5a1-408c-bb3e-eb2e823c8c44"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Michael Reed"]
 
 [deps]
