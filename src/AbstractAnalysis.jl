@@ -1,7 +1,8 @@
+module AbstractAnalysis
 
-#   This file is part of Magma.jl
+#   This file is part of AbstractAnalysis.jl
 #   It is licensed under the AGPL license
-#   Magma Copyright (C) 2026 Michael Reed
+#   AbstractAnalysis Copyright (C) 2026 Michael Reed
 #       _           _                         _
 #      | |         | |                       | |
 #   ___| |__   __ _| | ___ __ __ ___   ____ _| | __ _
@@ -11,6 +12,21 @@
 #
 #   https://github.com/chakravala
 #   https://crucialflow.com
+#       _       __               _                         _
+#      / \     [  |             / |_                      / |_
+#     / _ \     | |.--.   .--. `| |-'_ .--.  ,--.   .---.`| |-'
+#    / ___ \    | '/'`\ \( (`\] | | [ `/'`\]`'_\ : / /'`\]| |
+#  _/ /   \ \_  |  \__/ | `'.'. | |, | |    // | |,| \__. | |,
+# |____|_|____|[__;.__.' [\__) )\__/[___]   \'-;__/'.___.'\__/
+#      / \                     [  |                  (_)
+#     / _ \     _ .--.   ,--.   | |   _   __  .--.   __   .--.
+#    / ___ \   [ `.-. | `'_\ :  | |  [ \ [  ]( (`\] [  | ( (`\]
+#  _/ /   \ \_  | | | | // | |, | |   \ '/ /  `'.'.  | |  `'.'.
+# |____| |____|[___||__]\'-;__/[___][\_:  /  [\__) )[___][\__) )
+#                                    \__.'
+
+include("magma.jl")
+include("perm.jl")
 
 export CountableArray, CountableVector, CountableMatrix, CountableCache
 export FunctionArray, FunctionVector, FunctionMatrix, CountableFunction
@@ -560,4 +576,4 @@ sequence(i::Vararg{Int}) = CountableVector(Base.Fix{1}(sequence,i))
 SequenceArray(n::Vararg{Int}) = CountableArray(sequence,n)
 SequenceArray(fun::Function,n::Vararg{Int}) = mapmap(fun,CountableArray(sequence,n))
 
-
+end # module

@@ -1,7 +1,7 @@
 module PrimesExt
 
-import CountableMagma, Primes
+import AbstractAnalysis, Primes
 
-CountableMagma.prime(i) = Primes.prime(Int,i)
+AbstractAnalysis.prime(i) = Primes.prime(Int,i)
 
 end # module

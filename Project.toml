@@ -1,6 +1,6 @@
-name = "CountableMagma"
-uuid = "ac3229fe-d5a1-408c-bb3e-eb2e823c8c44"
-version = "0.1.1"
+name = "AbstractAnalysis"
+uuid = "86512db7-604a-4b90-aeec-df6b673a43d4"
+version = "0.2.0"
 authors = ["Michael Reed"]
 
 [deps]

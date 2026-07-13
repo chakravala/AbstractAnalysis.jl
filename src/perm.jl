@@ -1,7 +1,7 @@
 
-#   This file is part of Magma.jl
+#   This file is part of AbstractAnalysis.jl
 #   It is licensed under the AGPL license
-#   Magma Copyright (C) 2026 Michael Reed
+#   AbstractAnalysis Copyright (C) 2026 Michael Reed
 #       _           _                         _
 #      | |         | |                       | |
 #   ___| |__   __ _| | ___ __ __ ___   ____ _| | __ _

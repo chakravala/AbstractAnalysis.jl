@@ -1,8 +1,8 @@
 module ModsExt
 
-import CountableMagma, Mods
+import AbstractAnalysis, Mods
 
-CountableMagma.gequal(a::Mods.AbstractMod,b::Mods.AbstractMod) = a == b
-CountableMagma.isinvertible(n::Mods.AbstractMod) = Mods.is_invertible(n)
+AbstractAnalysis.gequal(a::Mods.AbstractMod,b::Mods.AbstractMod) = a == b
+AbstractAnalysis.isinvertible(n::Mods.AbstractMod) = Mods.is_invertible(n)
 
 end # module

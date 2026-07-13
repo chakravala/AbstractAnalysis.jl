@@ -1,8 +1,7 @@
-module CountableMagma
 
-#   This file is part of CountableMagma.jl
+#   This file is part of AbstractAnalysis.jl
 #   It is licensed under the AGPL license
-#   Magma Copyright (C) 2026 Michael Reed
+#   AbstractAnalysis Copyright (C) 2026 Michael Reed
 #       _           _                         _
 #      | |         | |                       | |
 #   ___| |__   __ _| | ___ __ __ ___   ____ _| | __ _
@@ -330,7 +329,3 @@ function rightcosets(H::Semimagma{T,X,Y},G=defaultgroup(H)) where {T,X,Y}
     return out
 end
 
-include("perm.jl")
-include("count.jl")
-
-end # module Magma
