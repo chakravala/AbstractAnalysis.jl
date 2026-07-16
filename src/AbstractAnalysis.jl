@@ -396,7 +396,7 @@ end
 Base.cumprod(x::typeof(Naturals)) = CountableVector(length(x)>20 ? factorial∘big : factorial,length(x))
 
 sequence(i::NTuple{N,Int},j) where N = j ∈ Base.OneTo(N) ? i[j] : 1
-sequence(i::Vararg{Int}) = CountableVector(Base.Fix{1}(sequence,i))
+sequence(i::Vararg{Int}) = CountableVector(Base.Fix1(sequence,i))
 SequenceArray(n::Vararg{Int}) = CountableArray(sequence,n)
 SequenceArray(fun::Function,n::Vararg{Int}) = mapmap(fun,CountableArray(sequence,n))
 

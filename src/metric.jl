@@ -21,25 +21,51 @@ struct MetricSpace{D} <: AbstractMetric{D} end
 struct BanachSpace{D,N} <: NormedSpace{D,N} end
 struct HilbertSpace{D,N,P} <: NormedSpace{D,N} end=#
 
-macro metric(f)
-    d = esc(f)
-    quote
-        $d(a,b) = $d(a-b)
-        $d(a::Pair{Int},b::Pair{Int}) = $d(last(a),last(b))
-        $d(a::Pair{<:Pair},b::Pair{<:Pair}) = $d(last(a),last(b))
-        $d(a::Series,b::Series) = Inf
-        $d(a::Product,b::Product) = Inf
-        $d(::Base.Fix,::Base.Fix) = Inf
-        $d
+if  VERSION < v"1.12"
+    macro metric(f)
+        d = esc(f)
+        quote
+            $d(a,b) = $d(a-b)
+            $d(a::Pair{Int},b::Pair{Int}) = $d(last(a),last(b))
+            $d(a::Pair{<:Pair},b::Pair{<:Pair}) = $d(last(a),last(b))
+            $d(a::Series,b::Series) = Inf
+            $d(a::Product,b::Product) = Inf
+            $d(::Base.Fix1,::Base.Fix1) = Inf
+            $d(::Base.Fix2,::Base.Fix2) = Inf
+            $d
+        end
     end
-end
-macro norm(f)
-    n = esc(f)
-    quote
-        $n(x::Pair{Int}) = $n(last(x))
-        $n(x::Pair{<:Pair}) = $n(last(x))
-        $n(::Base.Fix) = Inf
-        @metric $f
+    macro norm(f)
+        n = esc(f)
+        quote
+            $n(x::Pair{Int}) = $n(last(x))
+            $n(x::Pair{<:Pair}) = $n(last(x))
+            $n(::Base.Fix1) = Inf
+            $n(::Base.Fix2) = Inf
+            @metric $f
+        end
+    end
+else
+    macro metric(f)
+        d = esc(f)
+        quote
+            $d(a,b) = $d(a-b)
+            $d(a::Pair{Int},b::Pair{Int}) = $d(last(a),last(b))
+            $d(a::Pair{<:Pair},b::Pair{<:Pair}) = $d(last(a),last(b))
+            $d(a::Series,b::Series) = Inf
+            $d(a::Product,b::Product) = Inf
+            $d(::Base.Fix,::Base.Fix) = Inf
+            $d
+        end
+    end
+    macro norm(f)
+        n = esc(f)
+        quote
+            $n(x::Pair{Int}) = $n(last(x))
+            $n(x::Pair{<:Pair}) = $n(last(x))
+            $n(::Base.Fix) = Inf
+            @metric $f
+        end
     end
 end
 
@@ -84,9 +110,17 @@ residual(x::Limit) = x.r
 (x::Limit{T,F,D} where {T,F})(u) where D = Limit(u,length(x)-1,counter(x),D)
 (::Limit{T,F,D} where {T,F})(x,y) where D = D(x,y)
 (x::Limit{<:Pair{Int,<:Union{Series,Product}}})(u) = last(x)(u)
-function (x::Limit{<:Pair{Int,<:Base.Fix},F,D} where F)(u) where D
-    countfix(z) = (first(z)+1) => last(x).f(u,first(z)+1)
-    Limit(1=>first(x)(u),length(x)=>last(x)(u),length(x),residual(x),countfix,D)
+
+if VERSION < v"1.12"
+    function (x::Limit{<:Pair{Int,<:Union{Base.Fix1,Base.Fix2}},F,D} where F)(u) where D
+        countfix(z) = (first(z)+1) => last(x).f(u,first(z)+1)
+        Limit(1=>first(x)(u),length(x)=>last(x)(u),length(x),residual(x),countfix,D)
+    end
+else
+    function (x::Limit{<:Pair{Int,<:Base.Fix},F,D} where F)(u) where D
+        countfix(z) = (first(z)+1) => last(x).f(u,first(z)+1)
+        Limit(1=>first(x)(u),length(x)=>last(x)(u),length(x),residual(x),countfix,D)
+    end
 end
 
 function Base.show(io::IO,x::Limit)
