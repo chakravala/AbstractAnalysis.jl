@@ -21,49 +21,36 @@ struct MetricSpace{D} <: AbstractMetric{D} end
 struct BanachSpace{D,N} <: NormedSpace{D,N} end
 struct HilbertSpace{D,N,P} <: NormedSpace{D,N} end=#
 
-if  VERSION < v"1.12"
-    macro metric(f)
-        d = esc(f)
-        quote
-            $d(a,b) = $d(a-b)
-            $d(a::Pair{Int},b::Pair{Int}) = $d(last(a),last(b))
-            $d(a::Pair{<:Pair},b::Pair{<:Pair}) = $d(last(a),last(b))
-            $d(a::Series,b::Series) = Inf
-            $d(a::Product,b::Product) = Inf
-            $d(::Base.Fix1,::Base.Fix1) = Inf
-            $d(::Base.Fix2,::Base.Fix2) = Inf
-            $d
-        end
+macro metric(f)
+    d = esc(f)
+    quote
+        $d(a::Number,b::Number) = $d(a-b)
+        $d(a::AbstractArray,b::AbstractArray) = $d(a-b)
+        $d(a::Pair{Int},b::Pair{Int}) = $d(last(a),last(b))
+        $d(a::Pair{<:Pair},b::Pair{<:Pair}) = $d(last(a),last(b))
+        $d(a,b) = Inf
+        $d
     end
+end
+
+if  VERSION < v"1.12"
     macro norm(f)
         n = esc(f)
         quote
             $n(x::Pair{Int}) = $n(last(x))
             $n(x::Pair{<:Pair}) = $n(last(x))
-            $n(::Base.Fix1) = Inf
-            $n(::Base.Fix2) = Inf
+            $n(::Fix1) = Inf
+            $n(::Fix2) = Inf
             @metric $f
         end
     end
 else
-    macro metric(f)
-        d = esc(f)
-        quote
-            $d(a,b) = $d(a-b)
-            $d(a::Pair{Int},b::Pair{Int}) = $d(last(a),last(b))
-            $d(a::Pair{<:Pair},b::Pair{<:Pair}) = $d(last(a),last(b))
-            $d(a::Series,b::Series) = Inf
-            $d(a::Product,b::Product) = Inf
-            $d(::Base.Fix,::Base.Fix) = Inf
-            $d
-        end
-    end
     macro norm(f)
         n = esc(f)
         quote
             $n(x::Pair{Int}) = $n(last(x))
             $n(x::Pair{<:Pair}) = $n(last(x))
-            $n(::Base.Fix) = Inf
+            $n(::Fix) = Inf
             @metric $f
         end
     end
@@ -111,15 +98,16 @@ residual(x::Limit) = x.r
 (::Limit{T,F,D} where {T,F})(x,y) where D = D(x,y)
 (x::Limit{<:Pair{Int,<:Union{Series,Product}}})(u) = last(x)(u)
 
+countfix(x,u) = Fix1(Fix1(countfix,x),u)
+countfix(x,u,z) = (first(z)+1) => last(x).f(u,first(z)+1)
+
 if VERSION < v"1.12"
-    function (x::Limit{<:Pair{Int,<:Union{Base.Fix1,Base.Fix2}},F,D} where F)(u) where D
-        countfix(z) = (first(z)+1) => last(x).f(u,first(z)+1)
-        Limit(1=>first(x)(u),length(x)=>last(x)(u),length(x),residual(x),countfix,D)
+    function (x::Limit{<:Pair{Int,<:Union{Fix1,Fix2}},F,D} where F)(u) where D
+        Limit(1=>first(x)(u),length(x)=>last(x)(u),length(x),residual(x),countfix(x,u),D)
     end
 else
-    function (x::Limit{<:Pair{Int,<:Base.Fix},F,D} where F)(u) where D
-        countfix(z) = (first(z)+1) => last(x).f(u,first(z)+1)
-        Limit(1=>first(x)(u),length(x)=>last(x)(u),length(x),residual(x),countfix,D)
+    function (x::Limit{<:Pair{Int,<:Fix},F,D} where F)(u) where D
+        Limit(1=>first(x)(u),length(x)=>last(x)(u),length(x),residual(x),countfix(x,u),D)
     end
 end
 
@@ -130,56 +118,57 @@ function Base.show(io::IO,x::Limit)
     show(io,last(x))
 end
 
+fixmap(x,f) = Fix1(Fix1(fixmap,x),f)
+function fixmap(x,f,u)
+    xn = counter(x)(first(u))
+    xn => f(last(xn))
+end
+
 function Base.map(f,x::Limit{T,F,D} where {T,F}) where D
     v0,vn = (1=>first(x))=>f(first(x)),(length(x)=>last(x))=>f(last(x))
-    function fixmap(u)
-        xn = counter(x)(first(u))
-        xn => f(last(xn))
-    end
-    Limit(v0,vn,length(x),Inf,fixmap,D)
+    Limit(v0,vn,length(x),Inf,fixmap(x,f),D)
 end
 function Base.map(f,x::Limit{<:Pair{Int},F,D} where F) where D
     v0,vn = initial(x)=>f(first(x)),final(x)=>f(last(x))
-    function fixmap(u)
-        xn = counter(x)(first(u))
-        xn => f(last(xn))
-    end
-    Limit(v0,vn,length(x),Inf,fixmap,D)
+    Limit(v0,vn,length(x),Inf,fixmap(x,f),D)
+end
+
+binopleft(x,f,a) = Fix1(Fix1(Fix1(binopleft,x),f),a)
+function binopleft(x::Limit,f,a,u)
+    y = last(first(u))
+    p = counter(x)(y)
+    ((first(first(u))+1)=>p) => f(a,last(p))
+end
+binopright(x,f,b) = Fix1(Fix1(Fix1(binopright,x),f),b)
+function binopright(x::Limit,f,b,u)
+    y = last(first(u))
+    p = counter(x)(y)
+    ((first(first(u))+1)=>p) => f(last(p),b)
+end
+function binop(a::Limit,b::Limit,f,u)
+    x,y = last(first(u))
+    p,q = counter(a)(x),counter(b)(y)
+    ((first(first(u))+1)=>(p,q)) => f(last(p),last(q))
 end
 
 for fun ∈ (:*,:+,:/,:-,:^)
     @eval begin
         function Base.$fun(a::Number,x::Limit{T,F,D} where {T,F}) where D
-            function binop(u)
-                y = last(first(u))
-                p = counter(x)(y)
-                ((first(first(u))+1)=>p) => $fun(a,last(p))
-            end
             v0 = (1 => initial(x)) => $fun(a,first(x))
             vn = (length(x) => final(x)) => $fun(a,last(x))
-            vn1 = binop(vn)
-            Limit(v0,vn1,length(x)+1,D(last(vn1),last(vn)),binop,D)
+            vn1 = binopleft(x,$fun,a,vn)
+            Limit(v0,vn1,length(x)+1,D(last(vn1),last(vn)),binopleft(x,$fun,a),D)
         end
         function Base.$fun(x::Limit{T,F,D} where {T,F},b::Number) where D
-            function binop(u)
-                y = last(first(u))
-                p = counter(x)(y)
-                ((first(first(u))+1)=>p) => $fun(last(p),b)
-            end
             v0 = (1 => initial(x)) => $fun(first(x),b)
             vn = (length(x) => final(x)) => $fun(last(x),b)
-            vn1 = binop(vn)
-            Limit(v0,vn1,length(x)+1,D(last(vn1),last(vn)),binop,D)
+            vn1 = binopright(x,$fun,b,vn)
+            Limit(v0,vn1,length(x)+1,D(last(vn1),last(vn)),binopright(x,$fun,b),D)
         end
         function Base.$fun(a::Limit{T,F,D} where {T,F},b::Limit{S,G,D} where {S,G}) where D
-            function binop(u)
-                x,y = last(first(u))
-                p,q = counter(a)(x),counter(b)(y)
-                ((first(first(u))+1)=>(p,q)) => $fun(last(p),last(q))
-            end
             v0 = (1 => (final(a),final(b))) => $fun(last(a),last(b))
-            vn = binop(v0)
-            Limit(v0,vn,2,D(last(vn),last(v0)),binop,D)
+            vn = binop(a,b,$fun,v0)
+            Limit(v0,vn,2,D(last(vn),last(v0)),binop(a,b,$fun),D)
         end
     end
 end
@@ -187,56 +176,62 @@ for fun ∈ unaryops
     @eval Base.$fun(x::Limit) = map($fun,x)
 end
 
+countsum(x) = Fix1(countsum,x)
+countsum(x::CountableVector,u) = (first(u)+1) => (last(u)+counter(x)(first(u)+1))
+function countsum(x::Limit{<:Pair{<:Union{Int,Pair}}},u)
+    fp1 = counter(x)(first(u))
+    fp1 => (last(u) + last(fp1))
+end
+function countsum(x::Limit,u)
+    fp1 = counter(x)(last(first(u)))
+    ((first(first(u))+1)=>fp1) => (last(u) + fp1)
+end
+
+countprod(x) = Fix1(countprod,x)
+countprod(x::CountableVector,u) = (first(u)+1) => (last(u)*counter(x)(first(u)+1))
+function countprod(x::Limit{<:Pair{<:Union{Int,Pair}}},u)
+    fp1 = counter(x)(first(u))
+    fp1 => (last(u) * last(fp1))
+end
+function countprod(x::Limit,u)
+    fp1 = counter(x)(last(first(u)))
+    ((first(first(u))+1)=>fp1) => (last(u) * fp1)
+end
+
 function Base.sum(x::CountableVector)
-    countsum(u) = (first(u)+1) => (last(u)+counter(x)(first(u)+1))
-    Limit(1=>x[1],length(x)=>sum(view(x,:)),length(x),x[end],countsum)
+    Limit(1=>x[1],length(x)=>sum(view(x,:)),length(x),x[end],countsum(x))
 end
 function Base.prod(x::CountableVector)
-    countprod(u) = (first(u)+1) => (last(u)*counter(x)(first(u)+1))
     val = prod(view(x,:))
-    Limit(1=>x[1],length(x)=>val,length(x),supnorm(val,val/x[end]),countprod)
+    Limit(1=>x[1],length(x)=>val,length(x),supnorm(val,val/x[end]),countprod(x))
 end
-
 function Base.sum(x::Limit{<:Pair{<:Union{Int,Pair}}})
-    function countsum(u)
-        fp1 = counter(x)(first(u))
-        fp1 => (last(u) + last(fp1))
-    end
-    Limit(x.v0=>last(x.v0),length(x)-1,countsum)
+    Limit(x.v0=>last(x.v0),length(x)-1,countsum(x))
 end
 function Base.sum(x::Limit)
-    function countsum(u)
-        fp1 = counter(x)(last(first(u)))
-        ((first(first(u))+1)=>fp1) => (last(u) + fp1)
-    end
-    Limit((1=>first(x))=>first(x),length(x)-1,countsum)
+    Limit((1=>first(x))=>first(x),length(x)-1,countsum(x))
 end
 function Base.prod(x::Limit{<:Pair{<:Union{Int,Pair}}})
-    function countprod(u)
-        fp1 = counter(x)(first(u))
-        fp1 => (last(u) + last(fp1))
-    end
-    Limit(x.v0=>last(x.v0),length(x)-1,countprod)
+    Limit(x.v0=>last(x.v0),length(x)-1,countprod(x))
 end
 function Base.prod(x::Limit)
-    function countprod(u)
-        fp1 = counter(x)(last(first(u)))
-        ((first(first(u))+1)=>fp1) => (last(u) * fp1)
-    end
-    Limit((1=>first(x))=>first(x),length(x)-1,countprod)
+    Limit((1=>first(x))=>first(x),length(x)-1,countprod(x))
 end
 
+countcumsum(x,u,k) = u[k-1] + last(Limit(x.v0,k-1,counter(x),D))
+countcumprod(x,u,k) = u[k-1] * last(Limit(x.v0,k-1,counter(x),D))
+
 function Base.cumsum(x::Limit{<:Pair{Int},F,D} where F) where D
-    SequenceArray([first(x)],(u,k) -> u[k-1] + last(Limit(x.v0,k-1,counter(x),D)))
+    SequenceArray([first(x)],countcumsum(x))
 end
 function Base.cumsum(x::Limit{T,F,D} where {T,F}) where D
-    SequenceArray([x],(u,k) -> u[k-1] + last(Limit(x.v0,k-1,counter(x),D)))
+    SequenceArray([x],countcumsum(x))
 end
 function Base.cumprod(x::Limit{<:Pair{Int},F,D} where F) where D
-    SequenceArray([first(x)],(u,k) -> u[k-1] * last(Limit(x.v0,k-1,counter(x),D)))
+    SequenceArray([first(x)],countcumprod(x))
 end
 function Base.cumprod(x::Limit{T,F,D} where {T,F}) where D
-    SequenceArray([x],(u,k) -> u[k-1] * last(Limit(x.v0,k-1,counter(x),D)))
+    SequenceArray([x],countcumprod(x))
 end
 
 #=function Base.sum(x::SequenceArray{T,1} where T)
@@ -273,11 +268,13 @@ function Base.getindex(x::Limit{T,F,D} where {T,F},i::Int) where D
     return Limit(initial(x),xn,i,D(xn,x0),F,D)
 end
 
+extract1(u,k) = extract(u,k-1)
+counterextract(x) = counter(x)∘extract1
+counterextract(x::Limit{<:Pair{Int}}) = Fix1(counterextract,x)
+counterextract(x::Limit{<:Pair{Int}},u,k) = last(counter(x)(k-1=>extract(u,k-1)))
+
 function Base.collect(x::Limit)
-    resize!(SequenceArray([first(x)],(u,k) -> counter(x)(extract(u,k-1))),length(x))
-end
-function Base.collect(x::Limit{<:Pair{Int}})
-    resize!(SequenceArray([first(x)],(u,k) -> last(counter(x)(k-1=>extract(u,k-1)))),length(x))
+    resize!(SequenceArray([first(x)],counterextract(x)),length(x))
 end
 function Base.collect(x::Limit{<:Pair{<:Pair,T}}) where T
     xn = x[1]
@@ -291,12 +288,13 @@ function Base.collect(x::Limit{<:Pair{<:Pair,T}}) where T
 end
 function Base.collect(x::Limit{<:AbstractArray})
     val = ElasticArray(reshape(first(x),size(first(x))...,1))
-    out = SequenceArray(val,(u,k) -> counter(x)(extract(u,k-1)))
+    out = SequenceArray(val,counterextract(x))
     return resize_lastdim!(out,length(x))
 end
 
 orbiterror(f,x,ϵ=5eps()) = orbit(f,x,ϵ,Val(true))
-orbit(f,x,n::Int,v::Val=Val(false)) = orbit(f,x,1:n,v)
+orbit(f,x,n,d) = orbit(f,x,n,Val(false),d)
+orbit(f,x,n::Int,v::Val=Val(false),d=supnorm) = orbit(f,x,1:n,v,d)
 function orbit(f,x,n::AbstractVector{Int},::Val{print}=Val(false),d=supnorm) where print
     out = print ? zeros(length(n)) : nothing
     x0 = x
@@ -338,6 +336,11 @@ function orbithold(f,x,n::AbstractVector{Int},::Val{print}=Val(false),d=supnorm)
     return Limit(x,xn,length(n)+1,d(xn,x0),f,d)
 end
 
+countresiduals(x) = Fix1(countresiduals,x)
+countresiduals(x::CountableVector,k) = d(counter(x)(k+1),counter(x)(k))
+countresiduals(x::AbstractArray,k) = d(extract(x,k+1),extract(x,k))
+countresiduals(x::AbstractArray,u,k) = d(extract(x,k+1),extract(x,k))
+
 lipschitz(x,d=supnorm,r=/) = residuals(residuals(x,d),r)
 residuals(x::Limit,d=supnorm) = residuals(collect(x),d)
 residuals(x::Ones) = Zeros(length(x)-1)
@@ -356,11 +359,14 @@ function residuals(x::AbstractArray,d=supnorm)
     return out
 end
 function residuals(x::CountableVector,d=supnorm)
-    CountableVector(k -> d(counter(x)(k+1),counter(x)(k)),length(x)-1)
+    CountableVector(countresiduals(x),length(x)-1)
 end
 function residuals(x::SequenceArray,d=supnorm)
-    SequenceArray(residuals(x.v,d),(u,k) -> d(extract(x,k+1),extract(x,k)))
+    SequenceArray(residuals(x.v,d),countresiduals(x))
 end
+
+residualproduct(x::CountableVector,d::Function=supnorm) = countableproduct(x,x,d)
+residualproduct(x::AbstractVector,d::Function=supnorm) = [d(a,b) for a ∈ x, b ∈ x]
 
 export FixedCycle
 
@@ -377,7 +383,7 @@ Base.getindex(x::FixedCycle{F,D} where F,i::Int) where D = FixedCycle(i,x.f,D)
 
 (x::FixedCycle{F,D} where F)(u,n=length(x)) where D = Limit(u,n,counter(x),D)
 
-export isconverging, ismonotonic
+export isconverging, isdiverging, ismonotonic, isdecreasing, isincreasing, iscauchy
 
 function isbounded(x::AbstractArray)
     for i ∈ x
@@ -394,6 +400,21 @@ function isdiverging(x::AbstractVector,d=supnorm)
         r0 = ri
         ri = d(x[i],x[i-1])
         r0 < ri && (return false)
+    end
+    return true
+end
+
+function iscauchy(x::AbstractVector,d=supnorm)
+    ϵ0 = d(x[end-1],x[end])
+    N = length(x)
+    for n ∈ N-2:-1:1
+        ϵmax = 0.0
+        for i ∈ n+1:N
+            rij = d(x[n],x[i])
+            ϵmax = max(ϵmax,rij)
+        end
+        ϵ0 > ϵmax && (return false)
+        ϵ0 = ϵmax
     end
     return true
 end
@@ -421,23 +442,21 @@ limit(x::FixedCycle,n::Int) = x[n]
 limit(x::AbstractVector,n::Int) = x[n]
 limit(x::AbstractArray,n::Int=size(x)[end]) = extract(x,n)
 
-function limit(x::CountableVector,n::Int=length(x),d=supnorm)
-    countlimit(u) = (first(u)+1) => counter(x)(first(u)+1)
-    Limit(1=>x[1],n=>x[n],n,d(x[n],x[n-1]),countlimit,d)
+countlimit(x) = Fix1(countlimit,x)
+countlimit(x::CountableVector,u) = (first(u)+1) => counter(x)(first(u)+1)
+countlimit(x::AbstractCountable,u) = (first(u)+1) => extract(x,first(u)+1)
+countlimit(x::Union{Series,Product},u) = (first(u)+1) => resize!(last(u),first(u)+1)
+
+function limit(x::CountableFunction,n::Int=length(x),d=supnorm)
+    Limit(1=>x[1],n=>x[n],n,d(x[n],x[n-1]),countlimit(x),d)
 end
 function limit(x::SequenceArray,n::Int=length(x),d=supnorm)
     n > length(x) && (return limit(x,length(x),d)[n])
-    countlimit(u) = (first(u)+1) => extract(x,first(u)+1)
     v0,vn = extract(x,1),extract(x,n)
-    Limit(1=>v0,n=>vn,n,d(vn,extract(x,n-1)),countlimit,d)
-end
-function limit(x::FunctionVector,n::Int=length(x),d=supnorm)
-    countlimit(u) = (first(u)+1) => extract(x,first(u)+1)
-    Limit(1=>x[1],n=>x[n],n,Inf,countlimit,d)
+    Limit(1=>v0,n=>vn,n,d(vn,extract(x,n-1)),countlimit(x),d)
 end
 function limit(x::Union{Series,Product},n::Int=length(x),d=supnorm)
-    countlimit(u) = (first(u)+1) => resize!(last(u),first(u)+1)
-    Limit(1=>x[1],n=>x[n],n,Inf,countlimit,d)
+    n == length(x) ? x : resize!(x,n)
 end
 
 limit(x::CountableVector,ϵ::AbstractFloat,p::Val=Val(false)) = limit(limit(x,2),ϵ,p)
@@ -461,4 +480,62 @@ function limit(L::Limit{T,F,D} where F,ϵ::AbstractFloat,::Val{print}=Val(false)
     return print ? (fp,out) : fp
 end
 
+export supseq, infseq, limsup, liminf, residualproduct, iscauchy
+
+function supremum(x,u,k)
+    xk = extract(x,k)
+    for i ∈ 1:k-1
+        assign!(u,i,max(extract(u,i),xk))
+    end
+    return xk
+end
+function infimum(x,u,k)
+    xk = extract(x,k)
+    for i ∈ 1:k-1
+        assign!(u,i,min(extract(u,i),xk))
+    end
+    return xk
+end
+
+function supseq(x::T) where T<:AbstractVector
+    out = resize!(SequenceArray([extract(x,1)],Fix1(supremum,x)),length(x))
+    T <: AbstractCountable ? out : out.v
+end
+function infseq(x::T) where T<:AbstractVector
+    out = resize!(SequenceArray([extract(x,1)],Fix1(infimum,x)),length(x))
+    T <: AbstractCountable ? out : out.v
+end
+
+function countsup(x::T,n,k) where T
+    xk = T<:CountableVector ? counter(x)(k+n) : extract(x,k+n)
+    iszero(n) && (return xk)
+    if isone(n)
+        xk1 = T<:CountableVector ? counter(x)(k) : extract(x,k)
+        max(xk1,xk)
+    else
+        max(countsup(x,n-1,k),xk)
+    end
+end
+function countinf(x::T,n,k) where T
+    xk = T<:CountableVector ? counter(x)(k+n) : extract(x,k+n)
+    iszero(n) && (return xk)
+    if isone(n)
+        xk1 = T<:CountableVector ? counter(x)(k) : extract(x,k)
+        min(xk1,xk)
+    else
+        min(countinf(x,n-1,k),xk)
+    end
+end
+
+supseq(x::T,n) where T<:AbstractVector = CountableVector(Fix1(Fix1(countsup,x),n),length(x))
+infseq(x::T,n) where T<:AbstractVector = CountableVector(Fix1(Fix1(countinf,x),n),length(x))
+
+limsup(x::AbstractCountable,args...) = limit(supseq(x,5),args...)
+liminf(x::AbstractCountable,args...) = limit(infseq(x,5),args...)
+limsup(x::AbstractCountable,m::Int,args...) = limit(supseq(x,m),args...)
+liminf(x::AbstractCountable,m::Int,args...) = limit(infseq(x,m),args...)
+limsup(x::AbstractVector,m::Int=5) = supseq(x,m)[end-m]
+liminf(x::AbstractVector,m::Int=5) = infseq(x,m)[end-m]
+limsup(x::AbstractVector,m::Int,n::Int) = supseq(x,m)[n]
+liminf(x::AbstractVector,m::Int,n::Int) = infseq(x,m)[n]
 

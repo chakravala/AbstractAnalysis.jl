@@ -25,6 +25,11 @@ module AbstractAnalysis
 # |____| |____|[___||__]\'-;__/[___][\_:  /  [\__) )[___][\__) )
 #                                    \__.'
 
+import Base: Fix1, Fix2
+if VERSION >= v"1.12"
+    import Base: Fix
+end
+
 include("magma.jl")
 include("perm.jl")
 
@@ -40,9 +45,9 @@ counter(x::CountableFunction) = x.f
 Base.broadcast(f,x::CountableFunction) = map(f,x)
 Base.getindex(x::CountableFunction{T,1} where T,ϵ::AbstractFloat) = limit(x,ϵ)
 
-mutable struct CountableArray{T,N,F} <: CountableFunction{T,N,F}
+struct CountableArray{T,N,F} <: CountableFunction{T,N,F}
     f::F
-    n::NTuple{N,Int}
+    n::Variables{N,Int}
 end
 
 const CountableVector{T,F} = CountableArray{T,1,F}
@@ -73,28 +78,34 @@ Zeros(n::Int) = CountableVector(zero,n)
 (x::CountableArray{T,N,F})(n::Vararg{Int,N}) where {T,N,F} = CountableArray{T,N,F}(counter(x),n)
 (x::CountableArray{T,N,F})(n::NTuple{N,Int}) where {T,N,F} = CountableArray{T,N,F}(counter(x),n)
 
-Base.size(x::CountableArray) = x.n
-Base.resize!(x::CountableVector,i::Int) = (x.n = (i,); return x)
+Base.size(x::CountableArray) = Tuple(x.n)
+Base.resize!(x::CountableVector,i::Int) = (x.n[1] = i; return x)
 Base.getindex(x::CountableVector,i::Int) = counter(x)(i)
 Base.getindex(x::CountableVector,i::Int,j::Int) = isone(j) ? counter(x)(i) : counter(x)(i,j)
 Base.getindex(x::CountableArray,i::Vararg{Int}) = counter(x)(i...)
 
 Semimagma(v::CountableVector,f=*,g=groupinverse(f)) = Semimagma(collect(v),f,g)
 
+countmapmap(x) = Fix1(countmapmap,x)
+countmapmap(x,u...) = map(f,counter(x)(u...))
+
 Base.map(f,x::CountableArray{T,N,identity} where {T,N}) = CountableArray(f,size(x))
 Base.map(f,x::CountableArray) = CountableArray(f∘counter(x),size(x))
-mapmap(f,x::CountableArray{<:CountableArray}) = CountableArray((u...)->map(f,counter(x)(u...)),size(x))
+mapmap(f,x::CountableArray{<:CountableArray}) = CountableArray(countmapmap(x),size(x))
+
+binop(a,b,f) = Fix1(Fix1(Fix1(binop,a),b),f)
+binop(a::CountableFunction,b::CountableFunction,f,x,n...) = f(counter(a)(x,n...),counter(b)(x,n...))
 
 for fun ∈ (:*,:+,:/,:-,:^)
     @eval begin
-        Base.$fun(a::Number,x::CountableArray{T,N} where T) where N = CountableArray((n::Vararg{Int,N})->$fun(a,counter(x)(n...)),size(x))
-        Base.$fun(x::CountableArray{T,N} where T,b::Number) where N = CountableArray((n::Vararg{Int,N})->$fun(counter(x)(n...),b),size(x))
-        Base.$fun(a::CountableArray{T,N} where T,b::CountableArray{S,N} where S) where N = CountableArray((n::Vararg{Int,N})->$fun(counter(a)(n...),counter(b)(n...)),min.(size(a),size(b)))
+        Base.$fun(a::Number,x::CountableArray{T,N} where T) where N = map(Fix1($fun,a),x)
+        Base.$fun(x::CountableArray{T,N} where T,b::Number) where N = map(Fix2($fun,b),x)
+        Base.$fun(a::CountableArray{T,N} where T,b::CountableArray{S,N} where S) where N = CountableArray(binop(a,b,$fun),min.(size(a),size(b)))
     end
 end
 const unaryops = [:inv,:-,:abs,:!,:~,:real,:imag,:conj,:floor,:ceil,:round,:exp,:exp2,:exp10,:log,:log2,:log10,:sinh,:cosh,:sqrt,:cbrt,:cos,:sin,:tan,:cot,:sec,:csc,:asec,:acsc,:sech,:csch,:acsch,:asech,:tanh,:coth,:asinh,:acosh,:atanh,:acoth,:asin,:acos,:atan,:acot,:sinc,:cosc,:cis,:abs2,:angle]
 for fun ∈ unaryops
-    @eval Base.$fun(x::CountableArray) = map($fun,x)
+    @eval Base.$fun(x::AbstractCountable) = map($fun,x)
 end
 
 LinearAlgebra.dot(a::CountableVector,b::CountableVector,Σ::Function=sum) = Σ(a*b)
@@ -129,9 +140,9 @@ FunctionVector{T}(f::F,n::NTuple) where {T,F} = FunctionVector{T,F}(f,n)
 FunctionVector{T}(f::F,n::Int=100) where {T,F} = FunctionVector{T,F}(f,(n,))
 FunctionMatrix{T}(f::F,n::NTuple) where {T,F} = FunctionMatrix{T,F}(f,n)
 FunctionMatrix{T}(f::F,n::Int=100,m::Int=100) where {T,F} = FunctionMatrix{T,F}(f,(n,))
-FunctionVector(f,n=100) = FunctionVector{typeof(Base.Fix2(f,1))}(f,n)
-FunctionMatrix(f,n::Int=100,m::Int=100) = FunctionMatrix{typeof(Base.Fix2(Base.Fix{3}(f,1),1))}(f,(n,m))
-FunctionMatrix(f,n::Tuple{Int,Int}) = FunctionMatrix{typeof(Base.Fix2(Base.Fix{3}(f,1),1))}(f,n)
+FunctionVector(f,n=100) = FunctionVector{typeof(Fix2(f,1))}(f,n)
+FunctionMatrix(f,n::Int=100,m::Int=100) = FunctionMatrix{typeof(Fix2(Fix{3}(f,1),1))}(f,(n,m))
+FunctionMatrix(f,n::Tuple{Int,Int}) = FunctionMatrix{typeof(Fix2(Fix{3}(f,1),1))}(f,n)
 FunctionMatrix(n::Int=100,m::Int=100) = FunctionArray(^,n,m)
 FunctionMatrix(n::Tuple{Int,Int}) = FunctionArray(^,n)
 #FunctionArray(f,n::Vararg{Int,N}) where N = FunctionArray{typeof(f(one.(n)...)),N}(f,n)
@@ -139,13 +150,13 @@ FunctionMatrix(n::Tuple{Int,Int}) = FunctionArray(^,n)
 FunctionArray(n::Vararg{Int,N}) where N = FunctionArray(^,n)
 FunctionArray(n::NTuple{N,Int}) where N = FunctionArray(^,n)
 
-(x::FunctionArray{T,N})(u,n::Vararg{Int,N}) where {T,N} = CountableArray(k->counter(x)(u,k),n)
-(x::FunctionArray{T,N})(u,n::NTuple{N,Int}=size(x)) where {T,N} = CountableArray(k->counter(x)(u,k),n)
+(x::FunctionArray{T,N})(u,n::Vararg{Int,N}) where {T,N} = CountableArray(Fix1(counter(x),u),n)
+(x::FunctionArray{T,N})(u,n::NTuple{N,Int}=size(x)) where {T,N} = CountableArray(Fix1(counter(x),u),n)
 
 Base.size(x::FunctionArray) = Tuple(x.n)
 Base.resize!(x::FunctionVector,i::Int) = (x.n[1] = i; return x)
-Base.getindex(x::FunctionVector,i::Int) = Base.Fix2(counter(x),i)
-Base.getindex(x::FunctionVector,i::Int,j::Int) = isone(j) ? Base.Fix2(counter(x),i) : Base.Fix2(Base.Fix{3}(counter(x),j),i)
+Base.getindex(x::FunctionVector,i::Int) = Fix2(counter(x),i)
+Base.getindex(x::FunctionVector,i::Int,j::Int) = isone(j) ? Fix2(counter(x),i) : Fix2(Fix{3}(counter(x),j),i)
 #Base.getindex(x::CountableArray,i::Vararg{Int}) = counter(x)(i...)
 Base.map(f,x::FunctionArray) = FunctionArray(f∘counter(x),size(x))
 Base.map(f,x::FunctionVector) = FunctionVector(f∘counter(x),size(x))
@@ -153,13 +164,10 @@ Base.map(f,x::FunctionMatrix) = FunctionMatrix(f∘counter(x),size(x))
 
 for fun ∈ (:*,:+,:/,:-,:^)
     @eval begin
-        Base.$fun(a::Number,x::FunctionArray{T,N} where T) where N = FunctionArray((x,n::Vararg{Int,N})->$fun(a,counter(x)(x,n...)),size(x))
-        Base.$fun(x::FunctionArray{T,N} where T,b::Number) where N = FunctionArray((x,n::Vararg{Int,N})->$fun(counter(x)(x,n...),b),size(x))
-        Base.$fun(a::FunctionArray{T,N} where T,b::FunctionArray{S,N} where S) where N = FunctionArray((x,n::Vararg{Int,N})->$fun(counter(a)(x,n...),counter(b)(x,n...)),min.(size(a),size(b)))
+        Base.$fun(a::Number,b::FunctionArray{T,N} where T) where N = map(Fix1($fun,a),b)
+        Base.$fun(a::FunctionArray{T,N} where T,b::Number) where N = map(Fix2($fun,b),a)
+        Base.$fun(a::FunctionArray{T,N} where T,b::FunctionArray{S,N} where S) where N = FunctionArray(binop(a,b,$fun),min.(size(a),size(b)))
     end
-end
-for fun ∈ unaryops
-    @eval Base.$fun(x::FunctionArray) = map($fun,x)
 end
 
 LinearAlgebra.dot(c::AbstractArray,f::FunctionArray) = Series(c,f)
@@ -268,22 +276,22 @@ function extract(c::SequenceArray,n::Int)
     return extract(c.v,n)
 end
 
+countcumsum(x) = Fix1(countcumsum,x)
+countcumsum(x::CountableVector,u,k) = u[k-1] + counter(x)(k)
+countcumsum(x::SequenceArray{T,1} where T,u,k) = u[k-1] + counter(x)(x,k)
+
+countcumprod(x) = Fix1(countcumprod,x)
+countcumprod(x::CountableVector,u,k) = u[k-1] * counter(x)(k)
+countcumprod(x::SequenceArray{T,1} where T,u,k) = u[k-1] * counter(x)(x,k)
+
 Base.cumsum(x::Zeros) = x
 Base.cumprod(x::Zeros) = x
 Base.cumsum(x::Ones) = Naturals(length(x))
 Base.cumprod(x::Ones) = x
-function Base.cumsum(x::CountableVector)
-    SequenceArray(cumsum(view(x,:)),(u,k) -> u[k-1] + counter(x)(k))
-end
-function Base.cumprod(x::CountableVector)
-    SequenceArray(cumprod(view(x,:)),(u,k) -> u[k-1] * counter(x)(k))
-end
-function Base.cumsum(x::SequenceArray{T,1} where T)
-    SequenceArray(cumsum(x.v),(u,k) -> u[k-1] + counter(x)(x,k))
-end
-function Base.cumprod(x::SequenceArray{T,1} where T)
-    SequenceArray(cumprod(x.v),(u,k) -> u[k-1] * counter(x)(x,k))
-end
+Base.cumsum(x::CountableVector) = SequenceArray(cumsum(view(x,:)),countcumsum(x))
+Base.cumprod(x::CountableVector) = SequenceArray(cumprod(view(x,:)),countcumprod(x))
+Base.cumsum(x::SequenceArray{T,1} where T) = SequenceArray(cumsum(x.v),countcumsum(x))
+Base.cumprod(x::SequenceArray{T,1} where T) = SequenceArray(cumprod(x.v),countcumprod(x))
 
 extract(x::AbstractVector,i) = (@inbounds x[i])
 extract(x::AbstractMatrix,i) = view(x,:,i)
@@ -296,6 +304,18 @@ assign!(x::AbstractMatrix,i,s) = (@inbounds x[:,i] = s)
 assign!(x::AbstractArray{T,3} where T,i,s) = (@inbounds x[:,:,i] = s) # .= s
 assign!(x::AbstractArray{T,4} where T,i,s) = (@inbounds x[:,:,:,i] = s)
 assign!(x::AbstractArray{T,5} where T,i,s) = (@inbounds x[:,:,:,:,i] = s)
+
+Base.map(f,x::SequenceArray{T,N} where T) where N = CountableArray(f∘Fix1(getindex,x),size(x))
+
+binop(a::SequenceArray,b::SequenceArray,f,n...) = f(a[n...],b[n...])
+
+for fun ∈ (:*,:+,:/,:-,:^)
+    @eval begin
+        Base.$fun(a::Number,x::SequenceArray{T,N} where T) where N = map(Fix1($fun,a),x)
+        Base.$fun(x::SequenceArray{T,N} where T,b::Number) where N = map(Fix2($fun,b),x)
+        Base.$fun(a::SequenceArray{T,N} where T,b::SequenceArray{S,N} where S) where N = CountableArray(binop(a,b,$fun),min.(size(a),size(b)))
+    end
+end
 
 export elegantpair, elegantproduct, countabletuple, countableproduct, mapmap
 export functiontuple, functionproduct
@@ -396,7 +416,7 @@ end
 Base.cumprod(x::typeof(Naturals)) = CountableVector(length(x)>20 ? factorial∘big : factorial,length(x))
 
 sequence(i::NTuple{N,Int},j) where N = j ∈ Base.OneTo(N) ? i[j] : 1
-sequence(i::Vararg{Int}) = CountableVector(Base.Fix1(sequence,i))
+sequence(i::Vararg{Int}) = CountableVector(Fix1(sequence,i))
 SequenceArray(n::Vararg{Int}) = CountableArray(sequence,n)
 SequenceArray(fun::Function,n::Vararg{Int}) = mapmap(fun,CountableArray(sequence,n))
 
