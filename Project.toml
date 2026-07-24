@@ -1,6 +1,6 @@
 name = "AbstractAnalysis"
 uuid = "86512db7-604a-4b90-aeec-df6b673a43d4"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Michael Reed"]
 
 [deps]

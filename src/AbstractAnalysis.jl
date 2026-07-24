@@ -75,6 +75,10 @@ CountableArray(n::NTuple{N,Int}) where N = countabletuple(Naturals.(n)...)
 Ones(n::Int) = CountableVector(one,n)
 Zeros(n::Int) = CountableVector(zero,n)
 
+countrange(x0,h) = Fix1(Fix1(countrange,x0),h)
+countrange(x0,h,i) = x0 + h*(i-1)
+CountableVector(x::AbstractRange) = CountableVector(countrange(first(x),step(x)),length(x))
+
 (x::CountableArray{T,N,F})(n::Vararg{Int,N}) where {T,N,F} = CountableArray{T,N,F}(counter(x),n)
 (x::CountableArray{T,N,F})(n::NTuple{N,Int}) where {T,N,F} = CountableArray{T,N,F}(counter(x),n)
 

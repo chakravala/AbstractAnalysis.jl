@@ -111,11 +111,14 @@ else
     end
 end
 
-function Base.show(io::IO,x::Limit)
-    if !get(io,:compact,false)
-        println(io,"(::Limit)[$(length(x))] with residual: $(residual(x))")
+Base.show(io::IO, ::MIME"text/plain", x::Limit) = show(io, x)
+function Base.show(io::IO, x::Limit)
+    if typeof(last(x)) <: Number || get(io,:compact,false)
+        println(io,"$(last(x)) (n → $(length(x)), Δ → $(residual(x)))")
+    else
+        println(io,"Limit as n → $(length(x)), Δ → $(residual(x))")
+        show(io,last(x))
     end
-    show(io,last(x))
 end
 
 fixmap(x,f) = Fix1(Fix1(fixmap,x),f)
@@ -476,7 +479,7 @@ function limit(L::Limit{T,F,D} where F,ϵ::AbstractFloat,::Val{print}=Val(false)
         change = T<:Pair{<:Union{Int,Pair}} ? D(last(xn),last(x0)) : D(xn,x0)
         print && push!(out,change)
     end
-    fp = Limit(x,xn,n,change,f,D)
+    fp = Limit(x,xn,n+length(L),change,f,D)
     return print ? (fp,out) : fp
 end
 
@@ -527,6 +530,7 @@ function countinf(x::T,n,k) where T
     end
 end
 
+
 supseq(x::T,n) where T<:AbstractVector = CountableVector(Fix1(Fix1(countsup,x),n),length(x))
 infseq(x::T,n) where T<:AbstractVector = CountableVector(Fix1(Fix1(countinf,x),n),length(x))
 
@@ -538,4 +542,15 @@ limsup(x::AbstractVector,m::Int=5) = supseq(x,m)[end-m]
 liminf(x::AbstractVector,m::Int=5) = infseq(x,m)[end-m]
 limsup(x::AbstractVector,m::Int,n::Int) = supseq(x,m)[n]
 liminf(x::AbstractVector,m::Int,n::Int) = infseq(x,m)[n]
+
+export derivative, derivative2
+
+#derivative(f) = Fix1(derivative,f)
+#derivative(f,x,h=cbrt(eps(typeof(x)))) = (f(x+h)-f(x-h))/2h
+
+derivative(f) = Fix1(derivative,f)
+derivative(f,x,h=eps()^(1/5)) = (-f(x+2h)+8f(x+h)-8f(x-h)+f(x-2h))/12h
+
+derivative2(f) = Fix1(derivative2,f)
+derivative2(f,x,h=sqrt(sqrt(eps(typeof(x))))) = (f(x+h)-2f(x)+f(x-h))/h^2
 
